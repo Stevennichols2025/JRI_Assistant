@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Markdown and Syntax Highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+</head>
+<body>
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>Saved Chats</h2>
+            <button class="icon-button" id="close-sidebar" onclick="toggleSidebar()" title="Close Sidebar">
+                <span>✕</span>
+            </button>
+        </div>
+        <div class="sidebar-content" id="sidebar-content">
+            <div class="loading-chats">Loading chats...</div>
+        </div>
+    </div>
+    
+    <div class="chat-container">
+        <header class="app-header">
+            <h1 class="app-title">Chat Assistant</h1>
+            <div class="header-actions">
+                <button class="icon-button" id="theme-toggle" onclick="toggleTheme()" title="Toggle Theme">
+                    <span id="theme-icon">🌙</span>
+                </button>
+                <button class="icon-button" id="sidebar-toggle" onclick="toggleSidebar()" title="Show Saved Chats">
+                    <span>💬</span>
+                </button>
+                <button class="icon-button" id="new-chat-button" onclick="newChat()" title="New Chat">
+                    <span>➕</span>
+                </button>
+                <button class="icon-button" id="clear-button" onclick="clearChat()" title="Clear Chat">
+                    <span>🗑️</span>
+                </button>
+            </div>
+        </header>
+        
+        <div class="chat-history" id="chat-history"></div>
+        
+        <div class="input-container">
+            <div class="input-row">
+                <select id="model" class="model-selector">
+                    <option value="gpt-3.5-turbo">Open AI 3.5 Turbo</option>
+                    <option value="gpt-4o">Open AI 4o</option>
+                    <option value="gpt-4o-mini">Open AI 4o-Mini</option>
+                    <option value="gpt-4.1">Open AI 4.1</option>
+                    <option value="gpt-5-mini">Open AI 5-mini</option>
+                    <option value="gpt-5-nano">Open AI 5-nano</option>
+                    <option value="gpt-5-chat">Open AI 5-Chat</option>
+                    <option value="o1">Open AI o1</option>
+                    <option value="o1-mini">Opo1-mini</option>
+
+                </select>
+            </div>`
+            <div class="input-row">
+                <textarea id="user-input" placeholder="Type your message... (Shift+Enter for new line)" rows="1"></textarea>
+                <button id="send-button" class="send-button" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+    <script>
+        // Theme Management
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        function setCookie(name, value, days = 365) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${date.toUTCString()};path=/`;
+        }
+
+        function getTheme() {
+            const themeCookie = getCookie('theme');
+            // Default to dark mode if no cookie is present
+            return themeCookie || 'dark';
+        }
+
+        function setTheme(theme) {
+            const body = document.body;
+            const themeIcon = document.getElementById('theme-icon');
+            
+            // Remove existing theme classes
+            body.classList.remove('dark-mode', 'light-mode');
+            
+            // Add new theme class
+            body.classList.add(`${theme}-mode`);
+            
+            // Update icon
+            themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
+            
+            // Save to cookie
+            setCookie('theme', theme);
+        }
+
+        function toggleTheme() {
+            const currentTheme = getTheme();
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            setTheme(newTheme);
+        }
+
+        // Initialize theme on page load
+        function initTheme() {
+            const theme = getTheme();
+            setTheme(theme);
+        }
+
+        // Initialize theme when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initTheme);
+        } else {
+            initTheme();
+        }
+    </script>
+    <script>
+        // Enhanced message rendering with markdown
+        const originalAddMessage = window.addMessage;
+        window.addMessage = function(message, isUser, timestamp = null) {
+            const chatHistory = document.getElementById('chat-history');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            
+            // Add message ID for actions
+            const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            messageDiv.id = messageId;
+            
+            // Message header with timestamp and actions
+            const messageHeader = document.createElement('div');
+            messageHeader.className = 'message-header';
+            
+            if (timestamp) {
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'message-timestamp';
+                timeSpan.textContent = timestamp;
+                messageHeader.appendChild(timeSpan);
+            }
+            
+            // Copy button
+            if (!isUser) {
+                const copyButton = document.createElement('button');
+                copyButton.className = 'message-action-button';
+                copyButton.innerHTML = '📋';
+                copyButton.title = 'Copy message';
+                copyButton.onclick = function() {
+                    navigator.clipboard.writeText(message).then(() => {
+                        copyButton.innerHTML = '✓';
+                        setTimeout(() => {
+                            copyButton.innerHTML = '📋';
+                        }, 2000);
+                    });
+                };
+                messageHeader.appendChild(copyButton);
+            }
+            
+            messageDiv.appendChild(messageHeader);
+            
+            // Message content with markdown rendering
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            // Store original content in data attribute for accurate extraction
+            contentDiv.setAttribute('data-original-content', message);
+            
+            if (isUser) {
+                contentDiv.textContent = message;
+            } else {
+                // Render markdown for bot messages
+                const html = marked.parse(message);
+                contentDiv.innerHTML = html;
+                // Re-run Prism highlighting after markdown is rendered
+                Prism.highlightAllUnder(contentDiv);
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            chatHistory.appendChild(messageDiv);
+            scrollToBottom();
+            
+            return messageDiv;
+        };
+        
+        // Loading indicator animation
+        const loadingDots = ['...', '..', '.'];
+        let loadingInterval = null;
+        
+        function showLoading() {
+            const chatHistory = document.getElementById('chat-history');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message bot-message loading-message';
+            loadingDiv.id = 'loading-indicator';
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+            loadingDiv.appendChild(contentDiv);
+            chatHistory.appendChild(loadingDiv);
+            scrollToBottom();
+            return loadingDiv;
+        }
+        
+        function removeLoading() {
+            const loading = document.getElementById('loading-indicator');
+            if (loading) {
+                loading.remove();
+            }
+        }
+        
+        // Override sendMessage to use streaming
+        const originalSendMessage = window.sendMessage;
+        window.sendMessage = function() {
+            const input = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const message = input.value.trim();
+            const selectedModel = document.getElementById('model').value;
+            
+            if (!message) return;
+            
+            // Disable input and button
+            input.disabled = true;
+            sendButton.disabled = true;
+            
+            // Add user message
+            addMessage(message, true, getTimestamp());
+            input.value = '';
+            autoResizeTextarea(input);
+            
+            // Create message div for streaming response
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message bot-message';
+            const messageId = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            messageDiv.id = messageId;
+            
+            // Message header
+            const messageHeader = document.createElement('div');
+            messageHeader.className = 'message-header';
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'message-timestamp';
+            timeSpan.textContent = getTimestamp();
+            messageHeader.appendChild(timeSpan);
+            messageDiv.appendChild(messageHeader);
+            
+            // Message content for streaming
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            // Will be updated as content streams
+            messageDiv.appendChild(contentDiv);
+            
+            const chatHistory = document.getElementById('chat-history');
+            chatHistory.appendChild(messageDiv);
+            scrollToBottom();
+            
+            // Mark streaming as in progress
+            streamingInProgress = true;
+            
+            // Use streaming endpoint
+            fetch('/stream_message', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    message: message,
+                    model: selectedModel
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    streamingInProgress = false;
+                    throw new Error('Stream failed');
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let fullText = '';
+                
+                function readStream() {
+                    return reader.read().then(({ done, value }) => {
+                        if (done) {
+                            // Stream complete, render markdown
+                            const html = marked.parse(fullText);
+                            contentDiv.innerHTML = html;
+                            // Store original content for extraction
+                            contentDiv.setAttribute('data-original-content', fullText);
+                            Prism.highlightAllUnder(contentDiv);
+                            
+                            // Add copy button
+                            const copyButton = document.createElement('button');
+                            copyButton.className = 'message-action-button';
+                            copyButton.innerHTML = '📋';
+                            copyButton.title = 'Copy message';
+                            copyButton.onclick = function() {
+                                navigator.clipboard.writeText(fullText).then(() => {
+                                    copyButton.innerHTML = '✓';
+                                    setTimeout(() => {
+                                        copyButton.innerHTML = '📋';
+                                    }, 2000);
+                                });
+                            };
+                            messageHeader.appendChild(copyButton);
+                            
+                            input.disabled = false;
+                            sendButton.disabled = false;
+                            input.focus();
+                            
+                            // Mark streaming as complete - wait a moment for session to update
+                            setTimeout(() => {
+                                streamingInProgress = false;
+                                console.log('Streaming complete, session should be updated');
+                            }, 300); // Give backend time to update session
+                            return;
+                        }
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop(); // Keep incomplete line in buffer
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    if (data.error) {
+                                        contentDiv.textContent = 'Error: ' + data.error;
+                                        input.disabled = false;
+                                        sendButton.disabled = false;
+                                        input.focus();
+                                        streamingInProgress = false;
+                                        return;
+                                    } else if (data.chunk) {
+                                        fullText += data.chunk;
+                                        // Update content as it streams (plain text for now, will render markdown at end)
+                                        contentDiv.textContent = fullText;
+                                        // Store original content for extraction
+                                        contentDiv.setAttribute('data-original-content', fullText);
+                                        scrollToBottom();
+                                    } else if (data.done) {
+                                        // Final markdown render
+                                        const html = marked.parse(fullText);
+                                        contentDiv.innerHTML = html;
+                                        // Store original content for extraction
+                                        contentDiv.setAttribute('data-original-content', fullText);
+                                        Prism.highlightAllUnder(contentDiv);
+                                        
+                                        // Add copy button
+                                        const copyButton = document.createElement('button');
+                                        copyButton.className = 'message-action-button';
+                                        copyButton.innerHTML = '📋';
+                                        copyButton.title = 'Copy message';
+                                        copyButton.onclick = function() {
+                                            navigator.clipboard.writeText(fullText).then(() => {
+                                                copyButton.innerHTML = '✓';
+                                                setTimeout(() => {
+                                                    copyButton.innerHTML = '📋';
+                                                }, 2000);
+                                            });
+                                        };
+                                        messageHeader.appendChild(copyButton);
+                                        
+                                        input.disabled = false;
+                                        sendButton.disabled = false;
+                                        input.focus();
+                                        
+                                        // Mark streaming as complete - wait a moment for session to update
+                                        setTimeout(() => {
+                                            streamingInProgress = false;
+                                            console.log('Streaming complete (done event), session should be updated');
+                                        }, 300); // Give backend time to update session
+                                        return;
+                                    }
+                                } catch (e) {
+                                    console.error('Error parsing SSE data:', e);
+                                }
+                            }
+                        }
+                        
+                        return readStream();
+                    });
+                }
+                
+                return readStream();
+            })
+            .catch(error => {
+                contentDiv.textContent = 'Error: ' + error;
+                input.disabled = false;
+                sendButton.disabled = false;
+                input.focus();
+            });
+        };
+        
+        // Load chat history on page load
+        // Only loads if there are actually messages in session (from a loaded chat)
+        // Fresh page loads should have empty session, so this won't load anything
+        function loadChatHistory() {
+            fetch('/get_history')
+                .then(response => response.json())
+                .then(data => {
+                    // Only load if there are messages AND the chat history DOM is empty
+                    // This ensures we don't load stale session data on a fresh page
+                    const chatHistory = document.getElementById('chat-history');
+                    if (data.messages && data.messages.length > 0 && chatHistory.children.length === 0) {
+                        chatHistory.innerHTML = '';
+                        
+                        data.messages.forEach((msg) => {
+                            const isUser = msg.role === 'user';
+                            const messageDiv = document.createElement('div');
+                            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+                            
+                            // Message header
+                            const messageHeader = document.createElement('div');
+                            messageHeader.className = 'message-header';
+                            messageDiv.appendChild(messageHeader);
+                            
+                            // Message content with markdown rendering for bot messages
+                            const contentDiv = document.createElement('div');
+                            contentDiv.className = 'message-content';
+                            // Store original content for extraction
+                            contentDiv.setAttribute('data-original-content', msg.content);
+                            
+                            if (isUser) {
+                                contentDiv.textContent = msg.content;
+                            } else {
+                                // Render markdown for bot messages
+                                const html = marked.parse(msg.content);
+                                contentDiv.innerHTML = html;
+                                Prism.highlightAllUnder(contentDiv);
+                                
+                                // Add copy button
+                                const copyButton = document.createElement('button');
+                                copyButton.className = 'message-action-button';
+                                copyButton.innerHTML = '📋';
+                                copyButton.title = 'Copy message';
+                                copyButton.onclick = function() {
+                                    navigator.clipboard.writeText(msg.content).then(() => {
+                                        copyButton.innerHTML = '✓';
+                                        setTimeout(() => {
+                                            copyButton.innerHTML = '📋';
+                                        }, 2000);
+                                    });
+                                };
+                                messageHeader.appendChild(copyButton);
+                            }
+                            
+                            messageDiv.appendChild(contentDiv);
+                            chatHistory.appendChild(messageDiv);
+                        });
+                        scrollToBottom();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading history:', error);
+                });
+        }
+        
+        // Sidebar functions
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const isOpen = sidebar.classList.toggle('open');
+            if (isOpen) {
+                loadSavedChats();
+            }
+        }
+
+        // Load and display saved chats
+        function loadSavedChats() {
+            const sidebarContent = document.getElementById('sidebar-content');
+            sidebarContent.innerHTML = '<div class="loading-chats">Loading chats...</div>';
+            
+            fetch('/list_chats')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.chats && data.chats.length > 0) {
+                        sidebarContent.innerHTML = '';
+                        data.chats.forEach(chat => {
+                            const chatItem = createChatItem(chat);
+                            sidebarContent.appendChild(chatItem);
+                        });
+                    } else {
+                        sidebarContent.innerHTML = '<div class="no-chats">No saved chats yet</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading chats:', error);
+                    sidebarContent.innerHTML = '<div class="no-chats">Error loading chats</div>';
+                });
+        }
+
+        function createChatItem(chat) {
+            const chatItem = document.createElement('div');
+            chatItem.className = 'chat-item';
+            chatItem.dataset.chatId = chat.id;
+            
+            const date = new Date(chat.created_at);
+            const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            chatItem.innerHTML = `
+                <div class="chat-item-info" onclick="loadChat('${chat.id}')">
+                    <div class="chat-item-title">${escapeHtml(chat.title)}</div>
+                    <div class="chat-item-date">${formattedDate}</div>
+                </div>
+                <div class="chat-item-actions">
+                    <button class="chat-item-delete" onclick="deleteChat('${chat.id}', event)" title="Delete Chat">🗑️</button>
+                </div>
+            `;
+            
+            return chatItem;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function loadChat(chatId) {
+            console.log("=".repeat(60));
+            console.log(`[LOAD_CHAT] === LOADING CHAT: ${chatId} ===`);
+            
+            // Log state BEFORE loading
+            const chatHistoryBefore = document.getElementById('chat-history');
+            const messagesBefore = extractMessagesFromDOM();
+            console.log(`[LOAD_CHAT] BEFORE: Chat history has ${chatHistoryBefore.children.length} message divs`);
+            console.log(`[LOAD_CHAT] BEFORE: Extracted ${messagesBefore.length} messages from DOM`);
+            
+            fetch(`/load_chat/${chatId}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log(`[LOAD_CHAT] Received ${data.messages ? data.messages.length : 0} messages from backend`);
+                    console.log(`[LOAD_CHAT] Received chat_history_html length: ${data.chat_history_html ? data.chat_history_html.length : 0}`);
+                    
+                    const chatHistory = document.getElementById('chat-history');
+                    
+                    // CRITICAL: If chat_history_html exists, restore it directly (exact DOM state)
+                    if (data.chat_history_html && data.chat_history_html.trim().length > 0) {
+                        console.log(`[LOAD_CHAT] Restoring chat history from saved HTML (${data.chat_history_html.length} chars)`);
+                        console.log(`[LOAD_CHAT] HTML preview (first 200 chars): ${data.chat_history_html.substring(0, 200)}...`);
+                        
+                        // Restore the exact HTML from the saved chat
+                        chatHistory.innerHTML = data.chat_history_html;
+                        
+                        // Re-run Prism highlighting on the restored content
+                        Prism.highlightAllUnder(chatHistory);
+                        
+                        console.log(`[LOAD_CHAT] Chat history restored from HTML`);
+                    } 
+                    // Fallback: Render from messages if HTML not available
+                    else if (data.messages && data.messages.length > 0) {
+                        console.log(`[LOAD_CHAT] No HTML available, rendering from messages`);
+                        console.log(`[LOAD_CHAT] Backend returned messages:`);
+                        data.messages.forEach((msg, idx) => {
+                            console.log(`[LOAD_CHAT]   ${idx + 1}. role=${msg.role}, content_length=${msg.content ? msg.content.length : 0}`);
+                        });
+                        
+                        chatHistory.innerHTML = '';
+                        
+                        console.log(`[LOAD_CHAT] Displaying ${data.messages.length} messages in chat history`);
+                        data.messages.forEach((msg, index) => {
+                            console.log(`[LOAD_CHAT] Rendering message ${index + 1}: role=${msg.role}, content_length=${msg.content ? msg.content.length : 0}`);
+                            const isUser = msg.role === 'user';
+                            const messageDiv = document.createElement('div');
+                            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+                            
+                            const messageHeader = document.createElement('div');
+                            messageHeader.className = 'message-header';
+                            messageDiv.appendChild(messageHeader);
+                            
+                            const contentDiv = document.createElement('div');
+                            contentDiv.className = 'message-content';
+                            // Store original content for extraction
+                            contentDiv.setAttribute('data-original-content', msg.content);
+                            
+                            if (isUser) {
+                                contentDiv.textContent = msg.content;
+                            } else {
+                                const html = marked.parse(msg.content);
+                                contentDiv.innerHTML = html;
+                                Prism.highlightAllUnder(contentDiv);
+                                
+                                const copyButton = document.createElement('button');
+                                copyButton.className = 'message-action-button';
+                                copyButton.innerHTML = '📋';
+                                copyButton.title = 'Copy message';
+                                copyButton.onclick = function() {
+                                    navigator.clipboard.writeText(msg.content).then(() => {
+                                        copyButton.innerHTML = '✓';
+                                        setTimeout(() => {
+                                            copyButton.innerHTML = '📋';
+                                        }, 2000);
+                                    });
+                                };
+                                messageHeader.appendChild(copyButton);
+                            }
+                            
+                            messageDiv.appendChild(contentDiv);
+                            chatHistory.appendChild(messageDiv);
+                        });
+                    }
+                    
+                    // Log state AFTER loading
+                    const chatHistoryAfter = document.getElementById('chat-history');
+                    const messagesAfter = extractMessagesFromDOM();
+                    console.log(`[LOAD_CHAT] AFTER: Chat history has ${chatHistoryAfter.children.length} message divs`);
+                    console.log(`[LOAD_CHAT] AFTER: Chat history innerHTML length: ${chatHistoryAfter.innerHTML.length}`);
+                    console.log(`[LOAD_CHAT] AFTER: Extracted ${messagesAfter.length} messages from DOM`);
+                    console.log(`[LOAD_CHAT] Messages displayed (AFTER loading):`);
+                    messagesAfter.forEach((msg, idx) => {
+                        console.log(`[LOAD_CHAT]   ${idx + 1}. role=${msg.role}, content_length=${msg.content ? msg.content.length : 0}`);
+                    });
+                    console.log("=".repeat(60));
+                    
+                    scrollToBottom();
+                    toggleSidebar();
+                })
+                .catch(error => {
+                    console.error('[LOAD_CHAT] Error loading chat:', error);
+                    alert('Error loading chat');
+                });
+        }
+
+        function deleteChat(chatId, event) {
+            event.stopPropagation();
+            if (confirm('Are you sure you want to delete this chat?')) {
+                fetch(`/delete_chat/${chatId}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'Chat deleted') {
+                        loadSavedChats();
+                    } else {
+                        alert('Error deleting chat');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting chat:', error);
+                    alert('Error deleting chat');
+                });
+            }
+        }
+
+        // Extract messages from the displayed chat history
+        function extractMessagesFromDOM() {
+            const chatHistory = document.getElementById('chat-history');
+            const messageDivs = chatHistory.querySelectorAll('.message');
+            const messages = [];
+            
+            messageDivs.forEach(msgDiv => {
+                const isUser = msgDiv.classList.contains('user-message');
+                const contentDiv = msgDiv.querySelector('.message-content');
+                if (contentDiv) {
+                    // Try to get original content from data attribute first
+                    let content = contentDiv.getAttribute('data-original-content');
+                    // Fall back to textContent if data attribute not available
+                    if (!content) {
+                        content = contentDiv.textContent.trim();
+                    } else {
+                        content = content.trim();
+                    }
+                    if (content) {
+                        messages.push({
+                            role: isUser ? 'user' : 'assistant',
+                            content: content
+                        });
+                    }
+                }
+            });
+            
+            return messages;
+        }
+
+        // Track if save is in progress to prevent duplicate saves
+        let saveInProgress = false;
+        // Track if streaming is in progress - don't allow saves during streaming
+        let streamingInProgress = false;
+        
+        // Helper function to save current chat (ONLY called by newChat button)
+        function saveCurrentChat(silent = false) {
+            console.log('=== SAVE_CURRENT_CHAT CALLED ===');
+            console.log(`[SAVE] Silent mode: ${silent}`);
+            console.log(`[SAVE] Save in progress: ${saveInProgress}`);
+            console.log(`[SAVE] Streaming in progress: ${streamingInProgress}`);
+            
+            // Prevent duplicate saves
+            if (saveInProgress) {
+                console.log('[SAVE] Save already in progress, skipping duplicate');
+                return Promise.resolve();
+            }
+            
+            // CRITICAL: Don't save if streaming is still in progress
+            // Wait a moment for the session to be updated after streaming completes
+            if (streamingInProgress) {
+                console.log('[SAVE] Streaming in progress, waiting for completion before save...');
+                return new Promise((resolve) => {
+                    // Poll every 100ms until streaming is complete
+                    const checkInterval = setInterval(() => {
+                        if (!streamingInProgress) {
+                            clearInterval(checkInterval);
+                            console.log('[SAVE] Streaming completed, waiting 200ms for session update...');
+                            // Wait a bit more to ensure session is updated
+                            setTimeout(() => {
+                                console.log('[SAVE] Retrying save after stream completion');
+                                saveCurrentChat(silent).then(resolve).catch(resolve);
+                            }, 200);
+                        }
+                    }, 100);
+                    // Timeout after 5 seconds
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        console.log('[SAVE] Timeout waiting for stream to complete');
+                        resolve();
+                    }, 5000);
+                });
+            }
+            
+            const chatHistory = document.getElementById('chat-history');
+            const hasMessages = chatHistory.children.length > 0;
+            
+            console.log(`[SAVE] Has messages in DOM: ${hasMessages}`);
+            
+            if (!hasMessages) {
+                console.log('[SAVE] No messages in DOM to save');
+                return Promise.resolve();
+            }
+            
+            // Log chat history state BEFORE save
+            console.log("[SAVE] === CHAT HISTORY STATE (BEFORE SAVE) ===");
+            console.log(`[SAVE] Chat history DOM elements: ${chatHistory.children.length}`);
+            
+            // CRITICAL: Capture the full innerHTML of the chat history area
+            // This preserves all formatting, styling, and exact content as displayed
+            const chatHistoryHTML = chatHistory.innerHTML;
+            console.log(`[SAVE] Chat history innerHTML length: ${chatHistoryHTML.length}`);
+            console.log(`[SAVE] Chat history innerHTML preview (first 200 chars): ${chatHistoryHTML.substring(0, 200)}...`);
+            
+            // Also extract messages for backend processing (session messages are still source of truth)
+            const messages = extractMessagesFromDOM();
+            console.log(`[SAVE] Extracted ${messages.length} messages from DOM for backend processing`);
+            
+            if (messages.length === 0 && chatHistoryHTML.trim().length === 0) {
+                console.log('[SAVE] No content in chat history to save');
+                return Promise.resolve();
+            }
+            
+            // Log detailed message breakdown
+            const userMessages = messages.filter(m => m.role === 'user');
+            const assistantMessages = messages.filter(m => m.role === 'assistant');
+            console.log(`[SAVE] Message breakdown - User: ${userMessages.length}, Assistant: ${assistantMessages.length}`);
+            
+            console.log('[SAVE] Backend will use session messages (source of truth) for message data');
+            console.log('[SAVE] Sending chat history HTML and messages to backend...');
+            
+            // Mark save as in progress
+            saveInProgress = true;
+            
+            // Save current chat - send both HTML and messages
+            // Backend will use session messages (actual content) if available, but also save HTML
+            return fetch('/save_chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    messages: messages,
+                    chat_history_html: chatHistoryHTML  // Full HTML from DOM
+                })
+            })
+            .then(response => {
+                console.log(`[SAVE] Response status: ${response.status} ${response.statusText}`);
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        console.error('[SAVE] Save failed with error:', err);
+                        console.error('[SAVE] Error details:', JSON.stringify(err, null, 2));
+                        return Promise.reject(err);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Log chat history state AFTER save
+                const chatHistoryAfter = document.getElementById('chat-history');
+                const messagesAfter = extractMessagesFromDOM();
+                console.log("[SAVE] === CHAT HISTORY STATE (AFTER SAVE) ===");
+                console.log(`[SAVE] Chat history DOM elements: ${chatHistoryAfter.children.length}`);
+                console.log(`[SAVE] Chat history innerHTML length: ${chatHistoryAfter.innerHTML.length}`);
+                console.log(`[SAVE] Messages in chat history (AFTER save): ${messagesAfter.length}`);
+                
+                if (!silent) {
+                    console.log('[SAVE] Chat saved successfully:', data);
+                    console.log(`[SAVE] Chat ID: ${data.chat_id}, Title: ${data.title}`);
+                    console.log(`[SAVE] Saved to local storage (file: chats/${data.chat_id}.json)`);
+                    console.log(`[SAVE] This will soon be a database insert`);
+                } else {
+                    console.log('[SAVE] Chat saved silently');
+                }
+                console.log("=".repeat(60));
+                
+                // Reload saved chats to ensure new chat appears in list
+                loadSavedChats();
+                return data;
+            })
+            .catch(error => {
+                console.error('[SAVE] Error saving chat:', error);
+                console.error('[SAVE] Error type:', typeof error);
+                console.error('[SAVE] Error keys:', Object.keys(error));
+                if (error.error) {
+                    console.error('[SAVE] Error message:', error.error);
+                }
+                if (error.message) {
+                    console.error('[SAVE] Error message (alt):', error.message);
+                }
+                if (!silent) {
+                    console.error('[SAVE] Full error object:', JSON.stringify(error, null, 2));
+                }
+                throw error;
+            })
+            .finally(() => {
+                // Reset save in progress flag after a delay to allow backend to set saved_chat_id
+                setTimeout(() => {
+                    saveInProgress = false;
+                }, 1000);
+            });
+        }
+
+        // New chat function - saves current chat before starting new one
+        // CRITICAL: This is the ONLY place where chats are saved to history
+        // No automatic saves (beforeunload, visibilitychange, etc.) - only manual saves via this button
+        function newChat() {
+            console.log('=== NEW CHAT BUTTON CLICKED ===');
+            const chatHistory = document.getElementById('chat-history');
+            const hasMessages = chatHistory.children.length > 0;
+            
+            console.log(`[NEW_CHAT] Has messages in DOM: ${hasMessages}`);
+            console.log(`[NEW_CHAT] Streaming in progress: ${streamingInProgress}`);
+            console.log(`[NEW_CHAT] Save in progress: ${saveInProgress}`);
+            
+            if (hasMessages) {
+                // Extract and log all messages from DOM before save
+                const domMessages = extractMessagesFromDOM();
+                console.log(`[NEW_CHAT] Extracted ${domMessages.length} messages from DOM:`);
+                domMessages.forEach((msg, idx) => {
+                    console.log(`[NEW_CHAT] Message ${idx + 1}: role=${msg.role}, content_length=${msg.content ? msg.content.length : 0}`);
+                    if (msg.content) {
+                        console.log(`[NEW_CHAT] Message ${idx + 1} content preview: ${msg.content.substring(0, 100)}...`);
+                    }
+                });
+                
+                // Count user vs assistant messages
+                const userCount = domMessages.filter(m => m.role === 'user').length;
+                const assistantCount = domMessages.filter(m => m.role === 'assistant').length;
+                console.log(`[NEW_CHAT] Message counts - User: ${userCount}, Assistant: ${assistantCount}`);
+                
+                if (confirm('Start a new chat? Current conversation will be saved.')) {
+                    console.log('[NEW_CHAT] User confirmed, proceeding with save...');
+                    
+                    // Save current chat - MUST complete before clearing
+                    // Backend will UPDATE if chat already exists, or CREATE new if it doesn't
+                    saveCurrentChat(false)
+                    .then(data => {
+                        console.log('[NEW_CHAT] Chat saved/updated successfully, now clearing:', data);
+                        // Clear current chat only after save is confirmed
+                        return fetch('/clear_history', {
+                            method: 'POST'
+                        });
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('[NEW_CHAT] History cleared, emptying chat display');
+                        chatHistory.innerHTML = '';
+                        // Verify the chat was saved by checking if it appears in the list
+                        // (if sidebar is open, it will auto-refresh from loadSavedChats in saveCurrentChat)
+                    })
+                    .catch(error => {
+                        console.error('[NEW_CHAT] Error in newChat flow:', error);
+                        const errorMsg = error.error || error.message || 'Unknown error';
+                        alert('Error saving chat: ' + errorMsg);
+                        // Still clear even if save fails (user can recover from history if needed)
+                        fetch('/clear_history', {
+                            method: 'POST'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            chatHistory.innerHTML = '';
+                        });
+                    });
+                } else {
+                    console.log('[NEW_CHAT] User cancelled');
+                }
+            } else {
+                // No messages, just clear
+                console.log('[NEW_CHAT] No messages to save, clearing history');
+                fetch('/clear_history', {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    chatHistory.innerHTML = '';
+                });
+            }
+        }
+        
+        // REMOVED: All automatic save triggers (beforeunload, visibilitychange, etc.)
+        // Chats are ONLY saved when user explicitly clicks "New Chat" button
+        // This ensures no unwanted chat records are created
+        
+        // Load history when page loads (after DOM is ready)
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                loadChatHistory();
+            });
+        } else {
+            loadChatHistory();
+        }
+    </script>
+</body>
+</html> 
