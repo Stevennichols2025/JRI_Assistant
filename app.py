@@ -236,6 +236,42 @@ def get_history():
     messages = session.get('messages', [])
     return jsonify({"messages": messages})
 
+@app.route('/load_messages', methods=['POST'])
+def load_messages():
+    """Load messages into session (for pasted chats)"""
+    try:
+        if not request.json:
+            return jsonify({"error": "Request must be JSON"}), 400
+        
+        messages = request.json.get('messages', [])
+        
+        if not messages:
+            return jsonify({"error": "No messages provided"}), 400
+        
+        # Validate message format
+        for msg in messages:
+            if not isinstance(msg, dict) or 'role' not in msg or 'content' not in msg:
+                return jsonify({"error": "Invalid message format"}), 400
+        
+        # Get existing messages from session
+        existing_messages = session.get('messages', [])
+        
+        # If session is empty, replace; otherwise append
+        if len(existing_messages) == 0:
+            session['messages'] = messages
+            print(f"[LOAD_MESSAGES] Loaded {len(messages)} messages into empty session")
+        else:
+            session['messages'] = existing_messages + messages
+            print(f"[LOAD_MESSAGES] Added {len(messages)} messages to existing {len(existing_messages)} messages")
+        
+        return jsonify({
+            "status": "Messages loaded",
+            "total_messages": len(session['messages'])
+        })
+    except Exception as e:
+        print(f"[LOAD_MESSAGES] Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/stream_message', methods=['POST'])
 def stream_message():
     """Stream message response using Server-Sent Events"""

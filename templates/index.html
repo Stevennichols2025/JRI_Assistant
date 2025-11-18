@@ -37,6 +37,9 @@
                 <button class="icon-button" id="sidebar-toggle" onclick="toggleSidebar()" title="Show Saved Chats">
                     <span>💬</span>
                 </button>
+                <button class="icon-button" id="copy-chat-button" onclick="copyEntireChat()" title="Copy Entire Chat">
+                    <span>📄</span>
+                </button>
                 <button class="icon-button" id="new-chat-button" onclick="newChat()" title="New Chat">
                     <span>➕</span>
                 </button>
@@ -51,18 +54,11 @@
         <div class="input-container">
             <div class="input-row">
                 <select id="model" class="model-selector">
-                    <option value="gpt-3.5-turbo">Open AI 3.5 Turbo</option>
-                    <option value="gpt-4o">Open AI 4o</option>
-                    <option value="gpt-4o-mini">Open AI 4o-Mini</option>
-                    <option value="gpt-4.1">Open AI 4.1</option>
-                    <option value="gpt-5-mini">Open AI 5-mini</option>
-                    <option value="gpt-5-nano">Open AI 5-nano</option>
-                    <option value="gpt-5-chat">Open AI 5-Chat</option>
-                    <option value="o1">Open AI o1</option>
-                    <option value="o1-mini">Opo1-mini</option>
-
+                    <option value="gpt-5-mini" selected>ChatGPT 5-mini</option>
+                    <option value="gpt-4o">ChatGPT 4o</option>
+                    <option value="gpt-4o-mini">ChatGPT 4o-mini</option>
                 </select>
-            </div>`
+            </div>
             <div class="input-row">
                 <textarea id="user-input" placeholder="Type your message... (Shift+Enter for new line)" rows="1"></textarea>
                 <button id="send-button" class="send-button" onclick="sendMessage()">Send</button>
@@ -227,6 +223,83 @@
             const selectedModel = document.getElementById('model').value;
             
             if (!message) return;
+            
+            // Check if pasted content is a copied chat
+            const pastedChat = parsePastedChat(message);
+            if (pastedChat) {
+                console.log('[SEND_MESSAGE] Detected pasted chat with', pastedChat.length, 'messages');
+                
+                const chatHistory = document.getElementById('chat-history');
+                const hasExistingMessages = chatHistory.children.length > 0;
+                
+                if (hasExistingMessages) {
+                    // Add to existing chat context
+                    console.log('[SEND_MESSAGE] Adding pasted chat to existing chat context');
+                    
+                    // Display messages in UI (both user and assistant)
+                    pastedChat.forEach(msg => {
+                        const isUser = msg.role === 'user';
+                        addMessage(msg.content, isUser, getTimestamp());
+                    });
+                    
+                    // Update session with pasted messages (add to existing context)
+                    fetch('/load_messages', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messages: pastedChat })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log(`[SEND_MESSAGE] Added ${pastedChat.length} messages to session. Total: ${data.total_messages}`);
+                    })
+                    .catch(err => {
+                        console.error('[SEND_MESSAGE] Error updating session:', err);
+                    });
+                    
+                    // Clear input
+                    input.value = '';
+                    autoResizeTextarea(input);
+                    alert(`Added ${pastedChat.length} messages from copied chat to current conversation`);
+                    return;
+                } else {
+                    // Create new chat from pasted content
+                    console.log('[SEND_MESSAGE] Creating new chat from pasted chat');
+                    
+                    // Clear any existing messages first
+                    const chatHistory = document.getElementById('chat-history');
+                    chatHistory.innerHTML = '';
+                    
+                    // Clear session
+                    fetch('/clear_history', { method: 'POST' })
+                    .then(() => {
+                        // Load messages into session
+                        return fetch('/load_messages', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ messages: pastedChat })
+                        });
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log(`[SEND_MESSAGE] Loaded ${pastedChat.length} messages into session. Total: ${data.total_messages}`);
+                        
+                        // Display messages in UI (both user and assistant)
+                        pastedChat.forEach(msg => {
+                            const isUser = msg.role === 'user';
+                            addMessage(msg.content, isUser, getTimestamp());
+                        });
+                    })
+                    .catch(err => {
+                        console.error('[SEND_MESSAGE] Error loading messages:', err);
+                    });
+                    
+                    // Clear input
+                    input.value = '';
+                    autoResizeTextarea(input);
+                    alert(`Loaded ${pastedChat.length} messages from copied chat as new conversation`);
+                    return;
+                }
+            }
             
             // Disable input and button
             input.disabled = true;
@@ -678,6 +751,92 @@
             });
             
             return messages;
+        }
+        
+        // Copy entire chat to clipboard in a format that can be pasted back
+        function copyEntireChat() {
+            const messages = extractMessagesFromDOM();
+            
+            if (messages.length === 0) {
+                alert('No messages to copy');
+                return;
+            }
+            
+            // Format: Simple text format that's easy to detect and parse
+            let chatText = '=== COPIED CHAT ===\n';
+            messages.forEach(msg => {
+                const role = msg.role === 'user' ? 'User' : 'Assistant';
+                chatText += `${role}: ${msg.content}\n\n`;
+            });
+            chatText += '=== END CHAT ===';
+            
+            navigator.clipboard.writeText(chatText).then(() => {
+                const copyButton = document.getElementById('copy-chat-button');
+                const originalHTML = copyButton.innerHTML;
+                copyButton.innerHTML = '✓';
+                copyButton.title = 'Chat copied to clipboard!';
+                setTimeout(() => {
+                    copyButton.innerHTML = originalHTML;
+                    copyButton.title = 'Copy Entire Chat';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy chat:', err);
+                alert('Failed to copy chat to clipboard');
+            });
+        }
+        
+        // Parse pasted chat content
+        function parsePastedChat(text) {
+            // Check if this is a copied chat format
+            if (!text.includes('=== COPIED CHAT ===') || !text.includes('=== END CHAT ===')) {
+                return null;
+            }
+            
+            // Extract content between markers
+            const startMarker = '=== COPIED CHAT ===';
+            const endMarker = '=== END CHAT ===';
+            const startIdx = text.indexOf(startMarker) + startMarker.length;
+            const endIdx = text.indexOf(endMarker);
+            
+            if (startIdx === -1 || endIdx === -1 || startIdx >= endIdx) {
+                return null;
+            }
+            
+            const chatContent = text.substring(startIdx, endIdx).trim();
+            const messages = [];
+            const lines = chatContent.split('\n');
+            
+            let currentRole = null;
+            let currentContent = [];
+            
+            for (const line of lines) {
+                if (line.match(/^(User|Assistant):\s*(.*)$/)) {
+                    // Save previous message if exists
+                    if (currentRole && currentContent.length > 0) {
+                        messages.push({
+                            role: currentRole.toLowerCase(),
+                            content: currentContent.join('\n').trim()
+                        });
+                    }
+                    // Start new message
+                    const match = line.match(/^(User|Assistant):\s*(.*)$/);
+                    currentRole = match[1].toLowerCase();
+                    currentContent = [match[2]];
+                } else if (currentRole && line.trim()) {
+                    // Continuation of current message
+                    currentContent.push(line);
+                }
+            }
+            
+            // Don't forget the last message
+            if (currentRole && currentContent.length > 0) {
+                messages.push({
+                    role: currentRole.toLowerCase(),
+                    content: currentContent.join('\n').trim()
+                });
+            }
+            
+            return messages.length > 0 ? messages : null;
         }
 
         // Track if save is in progress to prevent duplicate saves

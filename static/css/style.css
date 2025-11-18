@@ -224,9 +224,37 @@ body.dark-mode .bot-message {
 
 @keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: 0.7; } 30% { transform: translateY(-10px); opacity: 1; } }
 
-.model-selector, .model-dropdown { padding: var(--spacing-sm) var(--spacing-md); margin-bottom: var(--spacing-sm); width: 100%; border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: var(--font-size-base); font-family: var(--font-family); background-color: var(--surface); color: var(--text-primary); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.model-selector, .model-dropdown { padding: var(--spacing-sm) var(--spacing-md); margin-bottom: var(--spacing-sm); width: 100%; border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: var(--font-size-base); font-family: var(--font-family); background-color: var(--surface); color: var(--text-primary); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); cursor: pointer; }
 
 .model-selector:focus, .model-dropdown:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+
+/* Ensure dropdown options have proper contrast in both themes */
+.model-selector option, .model-dropdown option {
+    background-color: var(--surface);
+    color: var(--text-primary);
+}
+
+/* Dark mode specific styling for select dropdown */
+body.dark-mode .model-selector option {
+    background-color: rgba(0, 0, 0, 0.8);
+    color: var(--text-primary);
+}
+
+body.dark-mode .model-selector option:checked {
+    background-color: rgba(37, 99, 235, 0.3);
+    color: var(--text-primary);
+}
+
+/* Light mode specific styling for select dropdown */
+body.light-mode .model-selector option {
+    background-color: var(--surface);
+    color: var(--text-primary);
+}
+
+body.light-mode .model-selector option:checked {
+    background-color: rgba(37, 99, 235, 0.2);
+    color: var(--text-primary);
+}
 
 #user-input { flex: 1; padding: var(--spacing-md); border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: var(--font-size-base); font-family: var(--font-family); resize: none; min-height: 44px; max-height: 200px; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); overflow-y: auto; background-color: var(--surface); color: var(--text-primary); }
 
